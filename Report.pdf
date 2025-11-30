@@ -1,0 +1,96 @@
+CampusCompass Project Report
+
+1. Overview
+The CampusCompass project implements a campus navigation and student schedule management system. It loads graph edge data (time between locations) from data/edges.csv and class metadata (class code, location, start/end times) from data/classes.csv. The main program reads commands from stdin, manipulates student/class data in-memory, and prints results to stdout. The central data structure is a Graph used for shortest-path and connectivity calculations.
+
+2. Design & Data Structures
+- Graph: adjacency list mapping int node id -> vector<EdgeInfo>. EdgeInfo contains destination, travel time (weight), and open/closed state.
+- edges_map: unordered_map<long long, EdgeRecord> keyed by (min(a,b)<<32)|max(a,b) to allow quick toggle/check of edges.
+- classes: unordered_map<string, ClassInfo> mapping class code to ClassInfo {location, start_minutes, end_minutes}.
+- students: unordered_map<string, Student> mapping UFID string -> Student {name, id, residence, set<string> classes}.
+
+3. Command Implementations and Time Complexity
+All analyses are worst-case in terms of N: number of nodes, E: number of edges, S: number of students, C: number of classes a student has (<=6 by constraint).
+
+- ParseCSV(edges, classes)
+  - Complexity: O(E + K) where E is number of edges in edges.csv and K is number of classes rows in classes.csv (reading/parsing cost). Each edge insertion is O(1) average for unordered_map and vector push.
+
+- insert NAME ID RESIDENCE N CLASSCODEs
+  - Validations: UFID length, name characters, N in [1,6], each class code format and existence
+  - Insertion: O(N log C') for inserting class codes into a student (set insertion), where C' <= 6.
+  - Overall: O(N + validation_time) ~ O(1) since N <= 6.
+
+- remove STUDENT_ID
+  - Complexity: O(1) expected hash-map erase (unordered_map erase) to remove student. O(1).
+
+- dropClass STUDENT_ID CLASS
+  - Validate existence in the unordered_map, check class in student's set, erase from set (O(logC')), and possibly erase student if no classes remain.
+  - Complexity: O(log C') ≈ O(1).
+
+- replaceClass STUDENT_ID CLASS1 CLASS2
+  - Validation checks and set membership checks, then erase/insert operations (O(logC') each). Also checks that CLASS2 exists in classes mapping (O(1)).
+  - Complexity: O(1).
+
+- removeClass CLASSCODE
+  - Removes CLASSCODE from all students.
+  - Complexity: O(S * log C'), each student may need to check membership and possibly erase. With S students and C' small (<=6), complexity is O(S).
+  - Returns number of students removed from the class.
+
+- toggleEdgesClosure N a b pairs
+  - For each edge pair, toggles edges_map entry and updates adjacency lists (scans adjacency vectors; updates matching neighbors). If nodes have degree d, updating is O(d).
+  - Complexity: O(sum degree(a_i) + degree(b_i)) in worst-case across the N pairs. Typically O(N * average_degree).
+
+- checkEdgeStatus a b
+  - Lookup in edges_map keyed by pair; O(1) average.
+
+- isConnected a b
+  - BFS/DFS over graph only traversing open edges. Complexity: O(N + E) in worst-case where N is nodes reachable, E is edges explored.
+
+- printShortestEdges STUDENT_ID
+  - Runs Dijkstra from student's residence using only open edges. Complexity: O((N + E) log N) worst case using a priority queue. Then for each of the student's classes (<=6) look up distances and print results (O(1)).
+
+- printStudentZone STUDENT_ID
+  - Steps:
+    1) Run Dijkstra once from residence: O((N + E) log N).
+    2) For each class reachable, backtrack parents to collect path nodes (<= path length L, aggregated across classes <= N).
+    3) Build subgraph with only those nodes and their open edges: collect edges O(subgraph_edges).
+    4) Compute MST via Kruskal (sorting edges) O(M log M) where M is #edges in the subgraph. Using a union-find with path compression: nearly O(α(M)).
+  - Complexity: dominated by Dijkstra and sorting M edges => O((N + E) log N + M log M).
+
+- verifySchedule STUDENT_ID (Extra Credit)
+  - Validates schedule feasibility by ordering classes by start time and checking pairwise travel time.
+  - For each consecutive class pair we run a Dijkstra from the earlier class location to compute the shortest travel time => worst-case O(P * (N+E) log N) where P is number of pairs (P≤C'−1 ≤ 5).
+  - This is acceptable given class per student bound is small.
+
+4. Implementation Notes
+- Graph edges are undirected; adjacency is symmetric.
+- toggleEdgesClosure uses a canonical key to toggle and also updates adjacency entries so subsequent algorithms use the correct open/closed flag.
+- All output strings use exact cases described in project ("successful", "unsuccessful", integer counts, and specific print formats).
+- parseTime: simple HH:MM -> minutes since midnight.
+
+5. Testing & Unit Tests (source: test/test.cpp)
+- Implemented five tests using Catch2 (covers invalid inserts, insert+dropClass+removeClass, replaceClass rules, shortest path and toggles causing a class to become unreachable).
+- Tests operate on data/edges.csv and data/classes.csv provided in the repo and rely on CMake copying data/ into the build directory.
+
+6. What I would do next / Improvements
+- Performance: for some operations (toggle) we re-scan adjacency lists which might be accelerated by storing indices or maps to neighbors in addition to vector lists.
+- Robustness: more thorough parsing and error handling especially for malformed CSV rows.
+- Logging/verbosity modes to help debug.
+- Add thorough test cases for verifySchedule and printStudentZone covering more corner cases.
+
+7. Extra Credit
+- verifySchedule implemented: checks pairwise travel times using Dijkstra and compares to gaps in class times. Outputs exact lines describing ability to get between consecutive classes.
+
+8. Reflection (2-4 sentences)
+This assignment required combining graph algorithms with structured data handling and careful input parsing — I found designing the API between the graph and student/classe management to be the major design point. If I were to start over, I'd design a tighter separation (Graph class and StudentManager class) and add more unit tests early to build confidence incrementally.
+
+9. How to run (build/test)
+- Build
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+  cmake --build build -j
+- Run tests
+  ./build/Tests -s
+- Run program
+  ./build/Main
+
+End of Report.

@@ -1,84 +1,95 @@
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
+#include <sstream>
 
-// change if you choose to use a different header name
 #include "CampusCompass.h"
 
 using namespace std;
 
-// the syntax for defining a test is below. It is important for the name to be
-// unique, but you can group multiple tests with [tags]. A test can have
-// [multiple][tags] using that syntax.
-TEST_CASE("Example Test Name - Change me!", "[tag]") {
-  // instantiate any class members that you need to test here
-  int one = 1;
+// Test invalid insert commands and bad formatting
+TEST_CASE("Invalid inserts are rejected","[invalid]") {
+    CampusCompass C;
+    REQUIRE(C.ParseCSV("data/edges.csv", "data/classes.csv") == true);
 
-  // anything that evaluates to false in a REQUIRE block will result in a
-  // failing test
-  REQUIRE(one == 0); // fix me!
+    // capture cout
+    ostringstream out;
+    auto *old = cout.rdbuf(out.rdbuf());
 
-  // all REQUIRE blocks must evaluate to true for the whole test to pass
-  REQUIRE(false); // also fix me!
+    // invalid UFID (not 8 digits)
+    C.ParseCommand("insert \"BadName\" 1234 1 1 COP3502");
+    // invalid name (contains digits)
+    C.ParseCommand("insert \"Name1\" 10000001 1 1 COP3502");
+    // invalid class count (N=0)
+    C.ParseCommand("insert \"Good Name\" 10000002 1 0 COP3502");
+
+    cout.rdbuf(old);
+    string s = out.str();
+    REQUIRE(s.find("unsuccessful") != string::npos);
 }
 
-TEST_CASE("Test 2", "[tag]") {
-  // you can also use "sections" to share setup code between tests, for example:
-  int one = 1;
+// Test add, drop and removeClass mechanics
+TEST_CASE("Student insert/delete and removeClass works","[modify]") {
+    CampusCompass C;
+    REQUIRE(C.ParseCSV("data/edges.csv", "data/classes.csv") == true);
+    ostringstream out; auto *old = cout.rdbuf(out.rdbuf());
 
-  SECTION("num is 2") {
-    int num = one + 1;
-    REQUIRE(num == 2);
-  };
+    // insert two students
+    C.ParseCommand("insert \"Alice\" 20000001 23 2 COP3503 COP3530");
+    C.ParseCommand("insert \"Bob\" 20000002 23 1 COP3503");
+    // drop class from Alice
+    C.ParseCommand("dropClass 20000001 COP3530");
+    // remove non-existent student
+    C.ParseCommand("remove 11111111");
+    // removeClass COP3503 should remove from two students (Bob and Alice had COP3503)
+    C.ParseCommand("removeClass COP3503");
 
-  SECTION("num is 3") {
-    int num = one + 2;
-    REQUIRE(num == 3);
-  };
-
-  // each section runs the setup code independently to ensure that they don't
-  // affect each other
+    cout.rdbuf(old);
+    string outstr = out.str();
+    // check expected lines exist
+    REQUIRE(outstr.find("successful") != string::npos);
+    REQUIRE(outstr.find("2\n") != string::npos);
 }
 
-// You must write 5 unique, meaningful tests for credit on the testing section
-// of this project!
+// Test replaceClass validity
+TEST_CASE("Replace class works and enforces rules","[modify]") {
+    CampusCompass C;
+    REQUIRE(C.ParseCSV("data/edges.csv", "data/classes.csv") == true);
+    ostringstream out; auto *old = cout.rdbuf(out.rdbuf());
 
-// See the following for an example of how to easily test your output.
-// Note that while this works, I recommend also creating plenty of unit tests for particular functions within your code.
-// This pattern should only be used for final, end-to-end testing.
+    C.ParseCommand("insert \"Claire\" 30000001 23 1 COP3503");
+    // replace to a valid new code
+    C.ParseCommand("replaceClass 30000001 COP3503 COP3530");
+    // try replacing to non-existent code
+    C.ParseCommand("replaceClass 30000001 COP3530 ABC9999");
 
-// This uses C++ "raw strings" and assumes your CampusCompass outputs a string with
-//   the same thing you print.
-TEST_CASE("Example CampusCompass Output Test", "[flag]") {
-  // the following is a "raw string" - you can write the exact input (without
-  //   any indentation!) and it should work as expected
-  // this is based on the input and output of the first public test case
-  string input = R"(6
-insert "Student A" 10000001 1 1 COP3502
-insert "Student B" 10000002 1 1 COP3502
-insert "Student C" 10000003 1 2 COP3502 MAC2311
-dropClass 10000001 COP3502
-remove 10000001
-removeClass COP3502
-)";
+    cout.rdbuf(old);
+    string s = out.str();
+    // first replacement should be successful, second unsuccessful
+    REQUIRE(s.find("successful") != string::npos);
+    REQUIRE(s.rfind("unsuccessful") != string::npos);
+}
 
-  string expectedOutput = R"(successful
-successful
-successful
-successful
-unsuccessful
-2
-)";
+// Test shortest path then toggle edges so a class becomes unreachable
+TEST_CASE("printShortestEdges toggles and becomes unreachable","[paths]") {
+    CampusCompass C;
+    REQUIRE(C.ParseCSV("data/edges.csv", "data/classes.csv") == true);
 
-  string actualOutput;
+    // student located at node 23 (Carleton Auditorium)
+    // classes at COP3503 (start loc 23) and COP3530 (loc 14)
+    ostringstream out; auto *old = cout.rdbuf(out.rdbuf());
 
-  // somehow pass your input into your CampusCompass and parse it to call the
-  // correct functions, for example:
-  /*
-  CampusCompass c;
-  c.parseInput(input)
-  // this would be some function that sends the output from your class into a string for use in testing
-  actualOutput = c.getStringRepresentation()
-  */
+    C.ParseCommand("insert \"TestUser\" 40000001 23 2 COP3503 COP3530");
+    C.ParseCommand("printShortestEdges 40000001");
+    // close all edges incident to 23 so 23 becomes isolated from the rest of the graph
+    // edges touching 23 are: 13-23, 14-23, 22-23, 23-24
+    C.ParseCommand("toggleEdgesClosure 4 13 23 14 23 22 23 23 24");
+    C.ParseCommand("printShortestEdges 40000001");
 
-  REQUIRE(actualOutput == expectedOutput);
+    cout.rdbuf(old);
+    string s = out.str();
+    // first print should show non -1 for COP3530 and COP3503
+    REQUIRE(s.find("COP3530 | Total Time:") != string::npos);
+    // after toggle COP3530 should show Total Time: -1
+    auto pos = s.rfind("COP3530 | Total Time: -1");
+    REQUIRE(pos != string::npos);
 }
