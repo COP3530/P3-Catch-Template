@@ -247,7 +247,7 @@ add_executable(Tests
         )
 ```
 
-#### `<catch2/catch_test_macros.hpp>` not found in CLion
+## `<catch2/catch_test_macros.hpp>` not found in CLion
 If you got the template by downloading the zip file from Github and dragging it into Clion, you may have accidentally put the template *inside of* another project instead of opening it as a project itself. To quickly fix this, find the "Open Project" menu item and select the template folder you downloaded as the one for the project. 
 
 An alternative solution would be to copy the template repository following the steps in the instructions and use CLion's "Get From VCS" option to open the project, which would allow you to also keep track of your project changes with git.
