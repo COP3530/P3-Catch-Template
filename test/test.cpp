@@ -39,8 +39,8 @@ TEST_CASE("Test 2", "[tag]") {
   // affect each other
 }
 
-// You must write 5 unique, meaningful tests for credit on the testing section
-// of this project!
+// Refer to Canvas for a list of required tests. 
+// We encourage you to write more than required to ensure proper functionality, but only the ones on Canvas will be graded.
 
 // See the following for an example of how to easily test your output.
 // Note that while this works, I recommend also creating plenty of unit tests for particular functions within your code.
